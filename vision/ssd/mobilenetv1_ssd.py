@@ -7,8 +7,8 @@ from .predictor import Predictor
 from .config import mobilenetv1_ssd_config as config
 
 
-def create_mobilenetv1_ssd(num_classes, is_test=False):
-    base_net = MobileNetV1(1001).model  # disable dropout layer
+def create_mobilenetv1_ssd(num_classes, is_test=False, debug_dk=None):
+    base_net = MobileNetV1(1001, debug_dk).model  # disable dropout layer
 
     source_layer_indexes = [
         12,
@@ -60,15 +60,16 @@ def create_mobilenetv1_ssd(num_classes, is_test=False):
     ])
 
     return SSD(num_classes, base_net, source_layer_indexes,
-               extras, classification_headers, regression_headers, is_test=is_test, config=config)
+               extras, classification_headers, regression_headers, is_test=is_test, config=config, debug_dk=debug_dk)
 
 
-def create_mobilenetv1_ssd_predictor(net, candidate_size=200, nms_method=None, sigma=0.5, device=None):
+def create_mobilenetv1_ssd_predictor(net, candidate_size=200, nms_method=None, sigma=0.5, device=None, debug_dk=None):
     predictor = Predictor(net, config.image_size, config.image_mean,
                           config.image_std,
                           nms_method=nms_method,
                           iou_threshold=config.iou_threshold,
                           candidate_size=candidate_size,
                           sigma=sigma,
-                          device=device)
+                          device=device,
+                          debug_dk=debug_dk)
     return predictor

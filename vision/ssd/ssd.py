@@ -12,7 +12,7 @@ GraphPath = namedtuple("GraphPath", ['s0', 'name', 's1'])  #
 class SSD(nn.Module):
     def __init__(self, num_classes: int, base_net: nn.ModuleList, source_layer_indexes: List[int],
                  extras: nn.ModuleList, classification_headers: nn.ModuleList,
-                 regression_headers: nn.ModuleList, is_test=False, config=None, device=None):
+                 regression_headers: nn.ModuleList, is_test=False, config=None, device=None, debug_dk=None):
         """Compose a SSD model using the given components.
         """
         super(SSD, self).__init__()
@@ -25,6 +25,8 @@ class SSD(nn.Module):
         self.regression_headers = regression_headers
         self.is_test = is_test
         self.config = config
+        self.debug_dk = debug_dk
+        #print( "self.debug_dk=", self.debug_dk )
 
         # register layers in source_layer_indexes by adding them to a module list
         self.source_layer_add_ons = nn.ModuleList([t[1] for t in source_layer_indexes
@@ -42,6 +44,11 @@ class SSD(nn.Module):
         locations = []
         start_layer_index = 0
         header_index = 0
+        
+        if self.debug_dk == "dump":
+            print( "x.shape=", x.shape, "source_layer_indexes=", self.source_layer_indexes )
+        
+        lcnt = 0
         for end_layer_index in self.source_layer_indexes:
             if isinstance(end_layer_index, GraphPath):
                 path = end_layer_index
@@ -55,7 +62,21 @@ class SSD(nn.Module):
                 added_layer = None
                 path = None
             for layer in self.base_net[start_layer_index: end_layer_index]:
+                if self.debug_dk == "dump" and lcnt == 0:
+                    if len(x.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                        np.savetxt( "./logs/" + "in_conv.csv", x.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+                    else:
+                        np.savetxt( "./logs/" + "in_conv.csv", x.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+                
                 x = layer(x)
+                
+                if self.debug_dk == "dump":
+                    print( "lcnt=", lcnt, "x.shape=", x.shape, "header_index=", header_index )
+                    if len(x.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                        np.savetxt( "./logs/" + str(lcnt) + "_conv.csv", x.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+                    else:
+                        np.savetxt( "./logs/" + str(lcnt) + "_conv.csv", x.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+                    lcnt += 1
             if added_layer:
                 y = added_layer(x)
             else:
@@ -75,10 +96,33 @@ class SSD(nn.Module):
             locations.append(location)
 
         for layer in self.base_net[end_layer_index:]:
+            if self.debug_dk == "dump":
+                print( "layer=", layer )
             x = layer(x)
 
-        for layer in self.extras:
+        for ii, layer in enumerate(self.extras):
+            if self.debug_dk == "dump":
+                x0 = layer[0](x)
+                x1 = layer[1](x0)
+                if len(x1.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                    np.savetxt( "./logs/" + str(ii) + "_extra_x1.csv", x1.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+                else:
+                    np.savetxt( "./logs/" + str(ii) + "_extra_x1.csv", x1.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+                x2 = layer[2](x1)
+                x3 = layer[3](x2)
+                if len(x3.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                    np.savetxt( "./logs/" + str(ii) + "_extra_x3.csv", x3.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+                else:
+                    np.savetxt( "./logs/" + str(ii) + "_extra_x3.csv", x3.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
             x = layer(x)
+            if self.debug_dk == "dump":
+                print( "x.shape=", x.shape, "ii=", ii )
+                print( "layer=", layer )
+                print( "layer[0]=", layer[0] )
+                if len(x.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                    np.savetxt( "./logs/" + str(ii) + "_extra.csv", x.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+                else:
+                    np.savetxt( "./logs/" + str(ii) + "_extra.csv", x.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
             confidence, location = self.compute_header(header_index, x)
             header_index += 1
             confidences.append(confidence)
@@ -86,23 +130,65 @@ class SSD(nn.Module):
 
         confidences = torch.cat(confidences, 1)
         locations = torch.cat(locations, 1)
+        if len(confidences.data.cpu().numpy().reshape(-1)) % 16 == 0:
+            np.savetxt( "./logs/" + "concat1.csv", confidences.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+        else:
+            np.savetxt( "./logs/" + "concat1.csv", confidences.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+        if len(locations.data.cpu().numpy().reshape(-1)) % 16 == 0:
+            np.savetxt( "./logs/" + "concat2.csv", locations.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+        else:
+            np.savetxt( "./logs/" + "concat2.csv", locations.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
         
         if self.is_test:
             confidences = F.softmax(confidences, dim=2)
+            if self.debug_dk == "dump":
+                print( "confidences.shape=", confidences.shape )
+                if len(confidences.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                    np.savetxt( "./logs/" + "softmax.csv", confidences.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+                else:
+                    np.savetxt( "./logs/" + "softmax.csv", confidences.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
             boxes = box_utils.convert_locations_to_boxes(
                 locations, self.priors, self.config.center_variance, self.config.size_variance
             )
+            if len(boxes.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                np.savetxt( "./logs/" + "boxes1.csv", boxes.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+            else:
+                np.savetxt( "./logs/" + "boxes1.csv", boxes.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
             boxes = box_utils.center_form_to_corner_form(boxes)
+            if len(boxes.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                np.savetxt( "./logs/" + "boxes2.csv", boxes.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+            else:
+                np.savetxt( "./logs/" + "boxes2.csv", boxes.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
             return confidences, boxes
         else:
             return confidences, locations
 
     def compute_header(self, i, x):
         confidence = self.classification_headers[i](x)
+        if self.debug_dk == "dump":
+            print( "i=", i, "confidence.shape=", confidence.shape )
+            if len(confidence.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                np.savetxt( "./logs/" + str(i) + "_conf.csv", confidence.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+            elif len(confidence.data.cpu().numpy().reshape(-1)) % 10 == 0:
+                np.savetxt( "./logs/" + str(i) + "_conf.csv", confidence.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+            else:
+                conf = confidence.data.cpu().numpy().reshape(-1)
+                rest = 10 - conf.size % 10
+                np.savetxt( "./logs/" + str(i) + "_conf.csv", np.concatenate([conf, np.zeros((rest))]).reshape(-1, 10), fmt='%.9f', delimiter=',' )
         confidence = confidence.permute(0, 2, 3, 1).contiguous()
         confidence = confidence.view(confidence.size(0), -1, self.num_classes)
 
         location = self.regression_headers[i](x)
+        if self.debug_dk == "dump":
+            print( "i=", i, "location.shape=", location.shape )
+            if len(location.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                np.savetxt( "./logs/" + str(i) + "_loc.csv", location.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+            elif len(location.data.cpu().numpy().reshape(-1)) % 10 == 0:
+                np.savetxt( "./logs/" + str(i) + "_loc.csv", location.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+            else:
+                loc = location.data.cpu().numpy().reshape(-1)
+                rest = 10 - loc.size % 10
+                np.savetxt( "./logs/" + str(i) + "_loc.csv", np.concatenate([loc, np.zeros((rest))]).reshape(-1, 10), fmt='%.9f', delimiter=',' )
         location = location.permute(0, 2, 3, 1).contiguous()
         location = location.view(location.size(0), -1, 4)
 

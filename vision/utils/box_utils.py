@@ -3,11 +3,14 @@ import torch
 import itertools
 from typing import List
 import math
+import numpy as np
 
 SSDBoxSizes = collections.namedtuple('SSDBoxSizes', ['min', 'max'])
 
 SSDSpec = collections.namedtuple('SSDSpec', ['feature_map_size', 'shrinkage', 'box_sizes', 'aspect_ratios'])
 
+#DEBUG_DK = "dump"
+DEBUG_DK = ""
 
 def generate_ssd_priors(specs: List[SSDSpec], image_size, clamp=True) -> torch.Tensor:
     """Generate SSD Prior Boxes.
@@ -98,6 +101,8 @@ def convert_locations_to_boxes(locations, priors, center_variance,
             are relative to the image size.
     """
     # priors can have one dimension less.
+    if DEBUG_DK == "dump":
+        np.savetxt( "./logs/" + "priors.csv", priors.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
     if priors.dim() + 1 == locations.dim():
         priors = priors.unsqueeze(0)
     return torch.cat([
@@ -127,6 +132,9 @@ def area_of(left_top, right_bottom) -> torch.Tensor:
         area (N): return the area.
     """
     hw = torch.clamp(right_bottom - left_top, min=0.0)
+    if DEBUG_DK == "dump":
+        for ii in range(hw.size(0)):
+            print( "ii={}, area_of={:7.5f}".format(ii, hw[ii, 0] * hw[ii, 1]) )
     return hw[..., 0] * hw[..., 1]
 
 
@@ -146,6 +154,8 @@ def iou_of(boxes0, boxes1, eps=1e-5):
     overlap_area = area_of(overlap_left_top, overlap_right_bottom)
     area0 = area_of(boxes0[..., :2], boxes0[..., 2:])
     area1 = area_of(boxes1[..., :2], boxes1[..., 2:])
+    if DEBUG_DK == "dump":
+        print( "iou=", overlap_area / (area0 + area1 - overlap_area + eps) )
     return overlap_area / (area0 + area1 - overlap_area + eps)
 
 
@@ -232,6 +242,8 @@ def hard_nms(box_scores, iou_threshold, top_k=-1, candidate_size=200):
     picked = []
     _, indexes = scores.sort(descending=True)
     indexes = indexes[:candidate_size]
+    if DEBUG_DK == "dump":
+        np.savetxt( "./logs/" + "sorted_boxes.csv", boxes[indexes, :].data.cpu().numpy().reshape(-1, 4), fmt='%.9f', delimiter=',' )
     while len(indexes) > 0:
         current = indexes[0]
         picked.append(current.item())
