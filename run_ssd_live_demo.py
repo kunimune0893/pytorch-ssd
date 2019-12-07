@@ -21,6 +21,11 @@ else:
     cap.set(3, 1920)
     cap.set(4, 1080)
 
+debug_dk = None
+if len(sys.argv) >= 6:
+    debug_dk = sys.argv[5]
+    print( "debug_dk=", debug_dk )
+
 class_names = [name.strip() for name in open(label_path).readlines()]
 num_classes = len(class_names)
 
@@ -28,7 +33,7 @@ num_classes = len(class_names)
 if net_type == 'vgg16-ssd':
     net = create_vgg_ssd(len(class_names), is_test=True)
 elif net_type == 'mb1-ssd':
-    net = create_mobilenetv1_ssd(len(class_names), is_test=True)
+    net = create_mobilenetv1_ssd(len(class_names), is_test=True, debug_dk=debug_dk)
 elif net_type == 'mb1-ssd-lite':
     net = create_mobilenetv1_ssd_lite(len(class_names), is_test=True)
 elif net_type == 'mb2-ssd-lite':
@@ -38,12 +43,13 @@ elif net_type == 'sq-ssd-lite':
 else:
     print("The net type is wrong. It should be one of vgg16-ssd, mb1-ssd and mb1-ssd-lite.")
     sys.exit(1)
+print( net )
 net.load(model_path)
 
 if net_type == 'vgg16-ssd':
     predictor = create_vgg_ssd_predictor(net, candidate_size=200)
 elif net_type == 'mb1-ssd':
-    predictor = create_mobilenetv1_ssd_predictor(net, candidate_size=200)
+    predictor = create_mobilenetv1_ssd_predictor(net, candidate_size=200, debug_dk=debug_dk)
 elif net_type == 'mb1-ssd-lite':
     predictor = create_mobilenetv1_ssd_lite_predictor(net, candidate_size=200)
 elif net_type == 'mb2-ssd-lite':
@@ -76,6 +82,7 @@ while True:
                     1,  # font scale
                     (255, 0, 255),
                     2)  # line type
+    cv2.imwrite('./annotated_image.jpg', orig_image)
     cv2.imshow('annotated', orig_image)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
