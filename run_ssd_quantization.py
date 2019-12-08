@@ -131,7 +131,7 @@ torch.backends.cudnn.benchmark = False
 
 
 # 動作例
-# $ python run_ssd_quantization.py --datasets ../VOCdevkit/VOC2007/ ../VOCdevkit/VOC2012/ --validation_dataset ../VOCdevkit/test/VOC2007/ --net mb1-ssd --batch_size 1
+# $ python run_ssd_quantization.py --datasets ../data/VOCdevkit/VOC2007/ ../data/VOCdevkit/VOC2012/ --validation_dataset ../data/VOCdevkit/test/VOC2007/ --net mb1-ssd --batch_size 24 --effective-train-size 0.2
 
 
 

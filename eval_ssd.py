@@ -11,9 +11,24 @@ import argparse
 import pathlib
 import numpy as np
 import logging
-import sys
+import os, sys
 from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite, create_mobilenetv2_ssd_lite_predictor
+from collections import OrderedDict
 
+script_dir = os.path.dirname("__file__")
+module_path = os.path.abspath(os.path.join(script_dir, "..", "pytorch-distiller-new"))
+try:
+    import distiller
+except ImportError:
+    sys.path.append(module_path)
+    import distiller
+from distiller.data_loggers import *
+
+from enum import Enum
+import distiller.quantization as quantization
+
+# 実施例
+# python3 eval_ssd.py --net mb1-ssd --dataset ../data/VOCdevkit/test/VOC2007/ --trained_model models/mobilenet-v1-ssd-mp-0_675.pth --label_file models/voc-model-labels.txt
 
 parser = argparse.ArgumentParser(description="SSD Evaluation on VOC Dataset.")
 parser.add_argument('--net', default="vgg16-ssd",
@@ -31,6 +46,12 @@ parser.add_argument("--iou_threshold", type=float, default=0.5, help="The thresh
 parser.add_argument("--eval_dir", default="eval_results", type=str, help="The directory to store evaluation results.")
 parser.add_argument('--mb2_width_mult', default=1.0, type=float,
                     help='Width Multiplifier for MobilenetV2')
+
+#parser.add_argument("--qe-mode", type=str, default="sym", help="Linear quantization mode.")
+#parser.add_argument("--qe-stats-file", type=str, help="Path to YAML file with calibration stats.")
+distiller.quantization.add_post_train_quant_args(parser)
+parser.add_argument("--debug-dk", type=str, help="for debug.")
+
 args = parser.parse_args()
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
 
@@ -153,6 +174,12 @@ if __name__ == '__main__':
         net.load(args.trained_model)
         net = net.to(DEVICE)
         print(f'It took {timer.end("Load Model")} seconds to load the model.')
+        
+        if args.qe_stats_file is not None:
+            net.cpu()
+            quantizer = quantization.PostTrainLinearQuantizer.from_args(net, args)
+            quantizer.prepare_model()
+            net.to(DEVICE)
     
     if args.net == 'vgg16-ssd':
         predictor = create_vgg_ssd_predictor(net, nms_method=args.nms_method, device=DEVICE)
