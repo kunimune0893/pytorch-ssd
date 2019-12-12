@@ -68,6 +68,16 @@ class SSD(nn.Module):
                     else:
                         np.savetxt( "./logs/" + "in_conv.csv", x.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
                 
+                if self.debug_dk == "dump" and lcnt <= 1:
+                    tmp = x
+                    for ii, ll in enumerate(layer):
+                        tmp = ll(tmp)
+                        print( "ii=", ii, "tmp.shape=", tmp.shape )
+                        if len(tmp.data.cpu().numpy().reshape(-1)) % 16 == 0:
+                            np.savetxt( "./logs/" + str(lcnt) + "_conv_" + str(ii) + ".csv", tmp.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
+                        else:
+                            np.savetxt( "./logs/" + str(lcnt) + "_conv_" + str(ii) + ".csv", tmp.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+                
                 x = layer(x)
                 
                 if self.debug_dk == "dump":
@@ -114,7 +124,9 @@ class SSD(nn.Module):
                     np.savetxt( "./logs/" + str(ii) + "_extra_x3.csv", x3.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
                 else:
                     np.savetxt( "./logs/" + str(ii) + "_extra_x3.csv", x3.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+            
             x = layer(x)
+            
             if self.debug_dk == "dump":
                 print( "x.shape=", x.shape, "ii=", ii )
                 print( "layer=", layer )
@@ -142,11 +154,15 @@ class SSD(nn.Module):
         if self.is_test:
             confidences = F.softmax(confidences, dim=2)
             if self.debug_dk == "dump":
-                print( "confidences.shape=", confidences.shape )
+                print( "softmax: confidences.shape=", confidences.shape )
                 if len(confidences.data.cpu().numpy().reshape(-1)) % 16 == 0:
                     np.savetxt( "./logs/" + "softmax.csv", confidences.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
-                else:
+                elif len(confidences.data.cpu().numpy().reshape(-1)) % 10 == 0:
                     np.savetxt( "./logs/" + "softmax.csv", confidences.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
+                else:
+                    np_softmax = confidences.data.cpu().numpy()
+                    rest = 10 - np_softmax.size % 10
+                    np.savetxt( "./logs/" + "softmax.csv", np.concatenate([np_softmax.reshape(-1), np.zeros((rest))]).reshape(-1, 10), fmt='%.9f', delimiter=',' )
             boxes = box_utils.convert_locations_to_boxes(
                 locations, self.priors, self.config.center_variance, self.config.size_variance
             )
@@ -166,7 +182,7 @@ class SSD(nn.Module):
     def compute_header(self, i, x):
         confidence = self.classification_headers[i](x)
         if self.debug_dk == "dump":
-            print( "i=", i, "confidence.shape=", confidence.shape )
+            print( "i=", i, "x.shape=", x.shape, "confidence.shape=", confidence.shape )
             if len(confidence.data.cpu().numpy().reshape(-1)) % 16 == 0:
                 np.savetxt( "./logs/" + str(i) + "_conf.csv", confidence.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
             elif len(confidence.data.cpu().numpy().reshape(-1)) % 10 == 0:
