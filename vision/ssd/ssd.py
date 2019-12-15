@@ -70,7 +70,7 @@ class SSD(nn.Module):
                 
                 if self.debug_dk == "dump" and lcnt <= 1:
                     tmp = x
-                    if lcnt == 0: print( "x[0, 0:3, 124:127, 290:293]=", x[0, 0:3, 124:127, 290:293] )
+                    if lcnt == 0: print( "x[0, 0:3, 124:127, 290:293]=", x[0, 0:3, 124:127, 290:293] ) # inp 確認済み
                     for ii, ll in enumerate(layer):
                         tmp = ll(tmp)
                         print( "ii=", ii, "tmp.shape=", tmp.shape )
@@ -78,12 +78,13 @@ class SSD(nn.Module):
                             np.savetxt( "./logs/" + str(lcnt) + "_conv_" + str(ii) + ".csv", tmp.data.cpu().numpy().reshape(-1, 16), fmt='%.9f', delimiter=',' )
                         else:
                             np.savetxt( "./logs/" + str(lcnt) + "_conv_" + str(ii) + ".csv", tmp.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
-                        if ii == 0:
+                        if ii == 0 and False:
                             wei = ll.weight.data.cpu().numpy()
-                            print( "wei.shape=", wei.shape )
-                            print( "wei[21]=", wei[21] )
-                            print( "tmp[0, 21, 63, 146]=", tmp[0, 21, 63, 146] )
-                            print( "np.sum(x[0, 0:3, 124:127, 290:293] * wei[21])=", np.sum(x[0, 0:3, 124:127, 290:293] * wei[21]) )
+                            print( "wei.shape=", wei.shape ) #=> (32, 3, 3, 3)
+                            if lcnt == 0:
+                                print( "wei[21]=", wei[21] ) #=> wei 確認済み
+                                print( "tmp[0, 21, 63, 146]=", tmp[0, 21, 63, 146] ) #=> tensor(2.8134, device='cuda:0')
+                                print( "np.sum(x[0, 0:3, 124:127, 290:293] * wei[21])=", np.sum(x.data.cpu().numpy()[0, 0:3, 124:127, 290:293] * wei[21]) ) #=> np.sum(x[0, 0:3, 124:127, 290:293] * wei[21])= 2.081288
                             if wei.size % 16 == 0:
                                 np.savetxt( "./logs/" + str(lcnt) + "_conv_" + str(ii) + "_wei.csv", wei.reshape(-1, 16), fmt='%.9f', delimiter=',' )
                             else:

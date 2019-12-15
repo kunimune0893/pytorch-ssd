@@ -43,7 +43,11 @@ from distiller.data_loggers import *
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 
-parser.add_argument("--dataset_type", default="voc", type=str,
+# Params operation
+parser.add_argument('--ope', default='calibration', type=str, help="calibration(default) or debug")
+
+# Params dataset
+parser.add_argument('--dataset_type', default='voc', type=str,
                     help='Specify dataset type. Currently support voc and open_images.')
 
 parser.add_argument('--datasets', nargs='+', help='Dataset directory path')
@@ -78,7 +82,6 @@ parser.add_argument('--base_net_lr', default=None, type=float,
                     help='initial learning rate for base net.')
 parser.add_argument('--extra_layers_lr', default=None, type=float,
                     help='initial learning rate for the layers not in base net and prediction heads.')
-
 
 # Params for loading pretrained basenet or checkpoints.
 parser.add_argument('--base_net',
@@ -115,7 +118,7 @@ parser.add_argument('--use_cuda', default=True, type=str2bool,
 
 parser.add_argument('--checkpoint_folder', default='models/',
                     help='Directory for saving checkpoint models')
-parser.add_argument("--debug-dk", type=str, help='for debug')
+parser.add_argument('--debug-dk', type=str, help='for debug')
 
 args = parser.parse_args()
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
@@ -285,10 +288,43 @@ if __name__ == '__main__':
     
     net.to(DEVICE)
     
-    criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
-                             center_variance=0.1, size_variance=0.2, device=DEVICE)
+    if args.ope == "calibration":
+        criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
+                                 center_variance=0.1, size_variance=0.2, device=DEVICE)
+        
+        test_fn = partial( test, loader=train_loader, criterion=criterion, device=DEVICE )
+        
+        collect_quant_stats( net, test_fn, save_dir='./logs', classes=None, inplace_runtime_check=True,
+                            disable_inplace_attrs=True)
     
-    test_fn = partial( test, loader=train_loader, criterion=criterion, device=DEVICE )
-    
-    collect_quant_stats( net, test_fn, save_dir='./logs', classes=None, inplace_runtime_check=True,
-                        disable_inplace_attrs=True)
+    elif args.ope == "debug":
+        net.eval()
+        for ii, data in enumerate(train_loader):
+            images, boxes, labels = data
+            images = images.to(DEVICE)
+            boxes  = boxes.to(DEVICE)
+            labels = labels.to(DEVICE)
+            
+            with torch.no_grad():
+                print( images.shape )
+                print( net )
+                print( net.base_net )
+                print( net.base_net[0][0] )
+                
+                
+                tmp = net.base_net[0][0]( images )
+                print( tmp.shape ) #=> torch.Size([1, 32, 150, 150])
+                print( "tmp[0, 21, 63, 146]=", tmp[0, 21, 63, 146] ) #=> tensor(2.8134, device='cuda:0')
+                
+                inp = images.data.cpu().numpy()
+                wei = net.base_net[0][0].weight.data.cpu().numpy()
+                
+                print( np.sum(inp[0, 0:3, 124:127, 290:293] * wei[21]) ) #=> 2.081288
+                # 21 * 150 * 150 = 472500 (21枚目のフィルタにジャンプ)
+                # 472500 + 150   = 472650 (先頭行はパディングがあるためスキップ)
+                # 472650 / 16    = 29540.625
+                # 29540 * 16     = 472640
+                for ii in range(1, 150):
+                    #print( np.sum(inp[0, 0:3, 1:4, (1 + 2 * ii):(4 + 2 * ii)] * wei[21]) ) # 21 * 150 * 150 + 150 = 472650, 472650 / 16 = 29540.625, 29540 * 16 = 472640
+                    #print( np.sum(inp[0, 0:3, 1:4, (1 + 2 * ii):(4 + 2 * ii)] * wei[2]) ) # 2 * 150 * 150 + 150 = 45150, 45150 / 16 = 2821.875, 2821 * 16 = 45136
+                    print( np.sum(inp[0, 0:3, (63 * 2 - 1):(63 * 2 - 1 + 3), (ii * 2 - 1):(ii * 2 - 1 + 3)] * wei[21]) )

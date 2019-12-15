@@ -9,7 +9,7 @@ import os, sys
 import argparse
 
 script_dir = os.path.dirname("__file__")
-module_path = os.path.abspath(os.path.join(script_dir, "..", "pytorch-distiller-new"))
+module_path = os.path.abspath(os.path.join(script_dir, "..", "pytorch-distiller"))
 try:
     import distiller
 except ImportError:
