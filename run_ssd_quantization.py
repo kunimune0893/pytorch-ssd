@@ -7,7 +7,7 @@ import numpy as np
 from functools import partial
 
 import torch
-from torch.utils.data import DataLoader, ConcatDataset, random_split
+from torch.utils.data import DataLoader, ConcatDataset, random_split, Subset
 from torch.optim.lr_scheduler import CosineAnnealingLR, MultiStepLR
 
 from vision.utils.misc import str2bool, Timer, freeze_net_layers, store_labels
@@ -36,6 +36,9 @@ except ImportError:
     sys.path.append(module_path)
     import distiller
 from distiller.data_loggers import *
+
+# 動作例
+# $ python run_ssd_quantization.py --datasets ../data/VOCdevkit/VOC2007/ ../data/VOCdevkit/VOC2012/ --net mb1-ssd --batch_size 24 --effective-train-size 0.2
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
@@ -112,6 +115,7 @@ parser.add_argument('--use_cuda', default=True, type=str2bool,
 
 parser.add_argument('--checkpoint_folder', default='models/',
                     help='Directory for saving checkpoint models')
+parser.add_argument("--debug-dk", type=str, help='for debug')
 
 args = parser.parse_args()
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
@@ -119,7 +123,6 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda el
 if args.use_cuda and torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
     logging.info("Use Cuda.")
-
 
 # 再現を可能にする形態で動作させる
 seed = 7
@@ -129,35 +132,32 @@ np.random.seed( seed )
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-
-# 動作例
-# $ python run_ssd_quantization.py --datasets ../data/VOCdevkit/VOC2007/ ../data/VOCdevkit/VOC2012/ --validation_dataset ../data/VOCdevkit/test/VOC2007/ --net mb1-ssd --batch_size 24 --effective-train-size 0.2
-
-
-
 def test(model, loader, criterion, device):
     net.eval()
     running_loss = 0.0
     running_regression_loss = 0.0
     running_classification_loss = 0.0
     num = 0
-    for _, data in enumerate(loader):
+    for ii, data in enumerate(loader):
         images, boxes, labels = data
         images = images.to(device)
         boxes = boxes.to(device)
         labels = labels.to(device)
         num += 1
-
+        
         with torch.no_grad():
             confidence, locations = net(images)
             regression_loss, classification_loss = criterion(confidence, locations, labels, boxes)
             loss = regression_loss + classification_loss
-
+        
         running_loss += loss.item()
         running_regression_loss += regression_loss.item()
         running_classification_loss += classification_loss.item()
+        
+        logging.info( "test(): ii={:4d}, running_loss/num={:6.4f}, running_regression_loss/num={:6.4f}, running_classification_loss/num={:6.4f}".format(
+            ii, running_loss / num, running_regression_loss / num, running_classification_loss / num) )
+    
     return running_loss / num, running_regression_loss / num, running_classification_loss / num
-
 
 if __name__ == '__main__':
     timer = Timer()
@@ -184,25 +184,22 @@ if __name__ == '__main__':
         sys.exit(1)
     
     # Transform：統計情報は学習用データで取得するが、Augumentation は不要 → テスト用の Transform を使う
-    train_transform = TrainAugmentation(config.image_size, config.image_mean, config.image_std)
     target_transform = MatchPrior(config.priors, config.center_variance,
                                   config.size_variance, 0.5)
     test_transform = TestTransform(config.image_size, config.image_mean, config.image_std)
-    
-    train_transform = test_transform # 学習用の変数に、テスト用の Transform をセット
     
     logging.info("Prepare training datasets.")
     datasets = []
     for dataset_path in args.datasets:
         if args.dataset_type == 'voc':
-            dataset = VOCDataset(dataset_path, transform=train_transform,
+            dataset = VOCDataset(dataset_path, transform=test_transform,
                                  target_transform=target_transform)
             label_file = os.path.join(args.checkpoint_folder, "voc-model-labels.txt")
             store_labels(label_file, dataset.class_names)
             num_classes = len(dataset.class_names)
         elif args.dataset_type == 'open_images':
             dataset = OpenImagesDataset(dataset_path,
-                 transform=train_transform, target_transform=target_transform,
+                 transform=test_transform, target_transform=target_transform,
                  dataset_type="train", balance_data=args.balance_data)
             label_file = os.path.join(args.checkpoint_folder, "open-images-model-labels.txt")
             store_labels(label_file, dataset.class_names)
@@ -215,31 +212,25 @@ if __name__ == '__main__':
     logging.info(f"Stored labels into file {label_file}.")
     
     train_dataset = ConcatDataset(datasets)
-    train_size = int( len(train_dataset) * args.effective_train_size )
-    train_dataset, dmy_dataset = torch.utils.data.random_split(train_dataset, [train_size, len(train_dataset) - train_size])
-    logging.info("Train dataset size: {}".format(len(train_dataset)))
-    train_loader = DataLoader(train_dataset, args.batch_size,
-                              num_workers=args.num_workers,
-                              shuffle=True)
     
-    # val_dataset, val_loader は使用しない
-    logging.info("Prepare Validation datasets.")
-    if args.dataset_type == "voc":
-        val_dataset = VOCDataset(args.validation_dataset, transform=test_transform,
-                                 target_transform=target_transform, is_test=True)
-    elif args.dataset_type == 'open_images':
-        val_dataset = OpenImagesDataset(dataset_path,
-                                        transform=test_transform, target_transform=target_transform,
-                                        dataset_type="test")
-        logging.info(val_dataset)
-    logging.info("validation dataset size: {}".format(len(val_dataset)))
-    
-    val_loader = DataLoader(val_dataset, args.batch_size,
-                            num_workers=args.num_workers,
-                            shuffle=False)
+    if args.effective_train_size == 0:
+        train_dataset = Subset(train_dataset, [0])
+        logging.info("Train dataset size: {}".format(len(train_dataset)))
+        
+        train_loader = DataLoader(train_dataset, args.batch_size,
+                                  num_workers=args.num_workers,
+                                  shuffle=False)
+    else:
+        train_size = int( len(train_dataset) * args.effective_train_size )
+        train_dataset, dmy_dataset = torch.utils.data.random_split(train_dataset, [train_size, len(train_dataset) - train_size])
+        logging.info("Train dataset size: {}, {}".format(train_size, len(train_dataset)))
+        
+        train_loader = DataLoader(train_dataset, args.batch_size,
+                                  num_workers=args.num_workers,
+                                  shuffle=True)
     
     logging.info("Build network.")
-    net = create_net(num_classes)
+    net = create_net(num_classes, is_test=True, debug_dk=args.debug_dk)
     min_loss = -10000.0
     last_epoch = -1
     
