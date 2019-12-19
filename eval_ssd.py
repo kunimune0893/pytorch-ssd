@@ -27,9 +27,6 @@ from distiller.data_loggers import *
 from enum import Enum
 import distiller.quantization as quantization
 
-# 実施例
-# python3 eval_ssd.py --net mb1-ssd --dataset ../data/VOCdevkit/test/VOC2007/ --trained_model models/mobilenet-v1-ssd-mp-0_675.pth --label_file models/voc-model-labels.txt
-
 parser = argparse.ArgumentParser(description="SSD Evaluation on VOC Dataset.")
 parser.add_argument('--net', default="vgg16-ssd",
                     help="The network architecture, it should be of mb1-ssd, mb1-ssd-lite, mb2-ssd-lite or vgg16-ssd.")
@@ -51,6 +48,7 @@ parser.add_argument('--mb2_width_mult', default=1.0, type=float,
 #parser.add_argument("--qe-stats-file", type=str, help="Path to YAML file with calibration stats.")
 distiller.quantization.add_post_train_quant_args(parser)
 parser.add_argument("--debug-dk", type=str, help="for debug.")
+parser.add_argument("--silent", action='store_true', default=False)
 
 args = parser.parse_args()
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
@@ -201,13 +199,13 @@ if __name__ == '__main__':
     if predictor is not None:
         results = []
         for i in range(len(dataset)):
-            print("process image", i)
+            if not args.silent: print("process image", i)
             timer.start("Load Image")
             image = dataset.get_image(i)
-            print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
+            if not args.silent: print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
             timer.start("Predict")
-            boxes, labels, probs = predictor.predict(image)
-            print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
+            boxes, labels, probs = predictor.predict(image, args.silent)
+            if not args.silent: print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
             indexes = torch.ones(labels.size(0), 1, dtype=torch.float32) * i
             results.append(torch.cat([
                 indexes.reshape(-1, 1),

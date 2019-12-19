@@ -37,9 +37,6 @@ except ImportError:
     import distiller
 from distiller.data_loggers import *
 
-# 動作例
-# $ python run_ssd_quantization.py --datasets ../data/VOCdevkit/VOC2007/ ../data/VOCdevkit/VOC2012/ --net mb1-ssd --batch_size 24 --effective-train-size 0.2
-
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 

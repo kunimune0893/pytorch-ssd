@@ -19,12 +19,9 @@ except ImportError:
 from distiller.data_loggers import *
 import distiller.quantization as quantization
 
-# 動作例
-# $ python run_ssd_live_demo.py mb1-ssd models/mobilenet-v1-ssd-mp-0_675.pth models/voc-model-labels.txt --data ../pytorch_handbook/chapter7/demo/sample.jpg
-
 parser = argparse.ArgumentParser(description="SSD live demo.")
 parser.add_argument("net_type", default="vgg16-ssd",
-                    help="The network architecture, it should be of mb1-ssd, mb1-ssd-lite, mb2-ssd-lite or vgg16-ssd")
+                    help="The network architecture, it should be of mb1-ssd, mb1-ssd-lite, mb2-ssd-lite or vgg16-ssd.")
 parser.add_argument("model_path", type=str)
 parser.add_argument("label_path", type=str)
 parser.add_argument("--data", type=str)
