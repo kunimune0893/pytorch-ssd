@@ -16,7 +16,7 @@ from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite, create
 from collections import OrderedDict
 
 script_dir = os.path.dirname("__file__")
-module_path = os.path.abspath(os.path.join(script_dir, "..", "pytorch-distiller-new"))
+module_path = os.path.abspath(os.path.join(script_dir, "..", "pytorch-distiller"))
 try:
     import distiller
 except ImportError:

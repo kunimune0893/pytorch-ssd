@@ -68,7 +68,7 @@ class SSD(nn.Module):
                     else:
                         np.savetxt( "./logs/" + "in_conv.csv", x.data.cpu().numpy().reshape(-1, 10), fmt='%.9f', delimiter=',' )
                 
-                if self.debug_dk == "dump" and lcnt <= 1:
+                if self.debug_dk == "dump":# and lcnt <= 5:
                     tmp = x
                     if lcnt == 0: print( "x[0, 0:3, 124:127, 290:293]=", x[0, 0:3, 124:127, 290:293] ) # inp 確認済み
                     for ii, ll in enumerate(layer):
